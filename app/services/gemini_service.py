@@ -10,9 +10,9 @@ logger = get_logger(__name__)
 
 _client: genai.Client | None = None
 
-SYSTEM_PROMPT = """Sən AI fitness köməkçisisən.
+SYSTEM_PROMPT = """Sən 30 illik təcrübəyə malik peşəkar fitness məşqçisisən (sertifikatlı şəxsi məşqçi və qidalanma üzrə bilikli mütəxəssis).
 ƏSAS QAYDA: İstifadəçi hansı dildə yazırsa, SƏN DƏ HƏMIN DİLDƏ cavab ver. Dili heç vaxt dəyişmə.
-Qısa, aydın və faydalı cavablar ver."""
+Bütün suallara dəqiq, düzgün və lazım gəldikdə qısa izahla cavab ver — bir məşqçinin öz şagirdinə izah etdiyi kimi aydın və etibarlı ol. Sözü uzatma, amma vacib detalı əsla buraxma."""
 
 
 def get_client() -> genai.Client:
@@ -61,7 +61,7 @@ async def generate_response(
             history=chat_history,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
-                max_output_tokens=1000,
+                max_output_tokens=1500,
                 temperature=0.7,
             ),
         )
@@ -84,22 +84,25 @@ async def generate_workout(
 ) -> str:
     client = get_client()
 
-    prompt = f"""İnternetdə aşağıdakı parametrlərə uyğun məşq proqramı axtar (muscleandstrength.com, bodybuilding.com, menshealth.com, myprotein.com kimi məşhur saytlarda):
+    prompt = f"""Sən 30 illik təcrübəyə malik peşəkar fitness məşqçisisən (sertifikatlı şəxsi məşqçi). İstifadəçinin aşağıdakı parametrlərinə tam uyğun, öz peşəkar bilik və təcrübənə əsaslanan fərdi məşq proqramı SƏN ÖZÜN hazırla.
 
+Parametrlər:
 - Həftədə məşq günü: {days} gün
 - Məqsəd: {goal}
 - Səviyyə: {level}
 - Avadanlıq: {equipment}
 - Fokus əzələ qrupu: {muscles}
 
-Tapdığın ən uyğun proqramı Azərbaycan dilinde belə formatda ver:
+Tələblər:
+- Heç bir konkret veb-saytdan və ya mənbədən köçürmə; mənbə, link və ya sayt adı QƏTİYYƏN YAZMA.
+- Hərəkət seçimi, set/təkrar sayları və istirahət vaxtları məqsədə və səviyyəyə tam uyğun, elmi əsaslı və düzgün olsun.
+- Hər hərəkətin yanında nə üçün seçildiyini 1 qısa cümlə ilə izah et (təcrübəli məşqçi məntiqi ilə).
+- Sonda 2-3 cümləlik düzgün istirahət və qidalanma tövsiyəsi ver.
 
-🌐 *Mənbə:* [saytın adı və linki]
-
-Sonra proqramı bu formatda yaz:
+Format:
 1. Hər gün üçün ayrıca başlıq (məs: 📅 Bazar ertəsi — Sinə + Triceps)
-2. Hər məşq üçün: adı, set sayı, təkrar sayı, qısa izah
-3. Sonda: istirahət və qidalanma məsləhəti (2-3 cümlə)
+2. Hər hərəkət üçün: adı, set sayı, təkrar sayı, qısa izah
+3. Sonda: istirahət və qidalanma tövsiyəsi
 
 Markdown işarələri istifadə etmə. Sadə mətn və emoji ilə yaz."""
 
@@ -108,9 +111,8 @@ Markdown işarələri istifadə etmə. Sadə mətn və emoji ilə yaz."""
             model=settings.gemini_model,
             contents=prompt,
             config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-                max_output_tokens=2000,
-                temperature=0.5,
+                max_output_tokens=4096,
+                temperature=0.6,
             ),
         )
         return response.text or "Proqram hazırlanmadı."
@@ -127,7 +129,7 @@ async def edit_workout(program: str, instruction: str) -> str:
     uyğun olaraq mövcud məşq proqramını AI ilə dəyişir və tam yenilənmiş proqramı qaytarır."""
     client = get_client()
 
-    prompt = f"""Aşağıda istifadəçinin mövcud məşq proqramı verilmişdir. İstifadəçinin tələbinə uyğun olaraq YALNIZ lazımi dəyişikliyi et, proqramın qalan hissəsini olduğu kimi saxla.
+    prompt = f"""Sən 30 illik təcrübəyə malik peşəkar fitness məşqçisisən. Aşağıda istifadəçinin mövcud məşq proqramı verilmişdir. İstifadəçinin tələbinə uyğun olaraq YALNIZ lazımi dəyişikliyi peşəkar məşqçi məntiqi ilə et (məs. əvəz olunan hərəkət bənzər əzələ qrupuna və çətinlik səviyyəsinə uyğun olsun), proqramın qalan hissəsini olduğu kimi saxla.
 
 MÖVCUD PROQRAM:
 {program}
@@ -138,6 +140,7 @@ MÖVCUD PROQRAM:
 Qaydalar:
 - Yalnız tələb olunan dəyişikliyi et, başqa heç nəyi dəyişmə.
 - Proqramın strukturunu (gün başlıqları, set/təkrar formatı, emoji üslubu) saxla.
+- Mənbə, link və ya sayt adı yazma.
 - Cavabında YALNIZ yenilənmiş tam proqramı ver — heç bir əlavə izahat, giriş və ya şərh yazma.
 - Markdown işarələri istifadə etmə. Sadə mətn və emoji ilə yaz."""
 
@@ -146,7 +149,7 @@ Qaydalar:
             model=settings.gemini_model,
             contents=prompt,
             config=types.GenerateContentConfig(
-                max_output_tokens=2000,
+                max_output_tokens=4096,
                 temperature=0.3,
             ),
         )
