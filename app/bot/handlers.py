@@ -226,7 +226,11 @@ async def muscles_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             equipment=w["equipment"],
             muscles=w["muscles"],
         )
-        await query.message.reply_text(program, parse_mode="Markdown")
+        # Telegram 4096 simvol limiti var, uzun mətnləri hissələrə böl
+        chunk_size = 3800
+        for i in range(0, len(program), chunk_size):
+            chunk = program[i:i + chunk_size]
+            await query.message.reply_text(chunk, parse_mode="Markdown")
     except Exception as e:
         logger.error(f"Workout generation error: {e}")
         await query.message.reply_text("⚠️ Xəta baş verdi. /workout ilə yenidən cəhd edin.")
