@@ -84,7 +84,7 @@ async def generate_workout(
 ) -> str:
     client = get_client()
 
-    prompt = f"""Aşağıdakı parametrlərə əsasən detallı həftəlik məşq proqramı hazırla:
+    prompt = f"""İnternetdə aşağıdakı parametrlərə uyğun məşq proqramı axtar (muscleandstrength.com, bodybuilding.com, menshealth.com, myprotein.com kimi məşhur saytlarda):
 
 - Həftədə məşq günü: {days} gün
 - Məqsəd: {goal}
@@ -92,20 +92,25 @@ async def generate_workout(
 - Avadanlıq: {equipment}
 - Fokus əzələ qrupu: {muscles}
 
-Proqramı belə formatda ver:
+Tapdığın ən uyğun proqramı Azərbaycan dilinde belə formatda ver:
+
+🌐 *Mənbə:* [saytın adı və linki]
+
+Sonra proqramı bu formatda yaz:
 1. Hər gün üçün ayrıca başlıq (məs: 📅 Bazar ertəsi — Sinə + Triceps)
 2. Hər məşq üçün: adı, set sayı, təkrar sayı, qısa izah
-3. Sonda: istirahət, qidalanma məsləhəti (2-3 cümlə)
+3. Sonda: istirahət və qidalanma məsləhəti (2-3 cümlə)
 
-Azərbaycan dilində yaz. Markdown formatından istifadə et."""
+Markdown formatından istifadə et."""
 
     async def _call():
         response = await client.aio.models.generate_content(
             model=settings.gemini_model,
             contents=prompt,
             config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())],
                 max_output_tokens=2000,
-                temperature=0.8,
+                temperature=0.5,
             ),
         )
         return response.text or "Proqram hazırlanmadı."
