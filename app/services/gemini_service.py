@@ -1,3 +1,4 @@
+import asyncio
 from google import genai
 from google.genai import types
 
@@ -32,6 +33,21 @@ def _build_history(messages: list[Message]) -> list[types.Content]:
     return history
 
 
+async def _with_retry(coro_fn, retries: int = 3, delay: float = 5.0):
+    """503/429 xətalarında avtomatik yenidən cəhd edir."""
+    for attempt in range(retries):
+        try:
+            return await coro_fn()
+        except Exception as e:
+            err = str(e)
+            if attempt < retries - 1 and ("503" in err or "429" in err or "UNAVAILABLE" in err):
+                wait = delay * (attempt + 1)
+                logger.warning(f"Gemini {e.__class__.__name__}, {wait}s sonra yenidən cəhd ({attempt+1}/{retries})")
+                await asyncio.sleep(wait)
+            else:
+                raise
+
+
 async def generate_response(
     user_message: str,
     history: list[Message] | None = None,
@@ -39,7 +55,7 @@ async def generate_response(
     client = get_client()
     chat_history = _build_history(history) if history else []
 
-    try:
+    async def _call():
         chat = client.aio.chats.create(
             model=settings.gemini_model,
             history=chat_history,
@@ -51,6 +67,9 @@ async def generate_response(
         )
         response = await chat.send_message(user_message)
         return response.text or "Cavab alınmadı."
+
+    try:
+        return await _with_retry(_call)
     except Exception as e:
         logger.error(f"Gemini API error: {e}")
         raise RuntimeError(f"AI xəta: {e}") from e
@@ -80,7 +99,7 @@ Proqramı belə formatda ver:
 
 Azərbaycan dilində yaz. Markdown formatından istifadə et."""
 
-    try:
+    async def _call():
         response = await client.aio.models.generate_content(
             model=settings.gemini_model,
             contents=prompt,
@@ -90,6 +109,9 @@ Azərbaycan dilində yaz. Markdown formatından istifadə et."""
             ),
         )
         return response.text or "Proqram hazırlanmadı."
+
+    try:
+        return await _with_retry(_call)
     except Exception as e:
         logger.error(f"Gemini workout error: {e}")
         raise RuntimeError(f"AI xəta: {e}") from e
