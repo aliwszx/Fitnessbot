@@ -101,7 +101,7 @@ Sonra proqramı bu formatda yaz:
 2. Hər məşq üçün: adı, set sayı, təkrar sayı, qısa izah
 3. Sonda: istirahət və qidalanma məsləhəti (2-3 cümlə)
 
-Markdown formatından istifadə et."""
+Markdown işarələri istifadə etmə. Sadə mətn və emoji ilə yaz."""
 
     async def _call():
         response = await client.aio.models.generate_content(
