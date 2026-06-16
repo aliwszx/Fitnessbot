@@ -15,38 +15,38 @@ setup_logging()
 logger = get_logger(__name__)
 
 
-async def _init_bot_with_retry(application, retries: int = 5, delay: float = 5.0):
-    """Telegram API-yə qoşulma zamanı timeout olarsa yenidən cəhd edir."""
-    for attempt in range(retries):
+async def _set_webhook_background():
+    """Server ayağa qalxdıqdan sonra arka planda webhook qurur."""
+    await asyncio.sleep(3)  # Server tam başlayana qədər gözlə
+    application = get_application()
+    for attempt in range(10):
         try:
-            await application.initialize()
             await application.bot.set_webhook(
                 url=settings.webhook_full_url,
                 secret_token=settings.secret_token,
                 allowed_updates=["message", "callback_query"],
                 drop_pending_updates=True,
             )
-            logger.info(f"Webhook set: {settings.webhook_full_url}")
+            logger.info(f"Webhook quruldu: {settings.webhook_full_url}")
             return
         except Exception as e:
-            if attempt < retries - 1:
-                wait = delay * (attempt + 1)
-                logger.warning(f"Telegram qoşulma xətası: {e}. {wait}s sonra yenidən cəhd ({attempt+1}/{retries})")
-                await asyncio.sleep(wait)
-            else:
-                logger.error(f"Telegram qoşulma uğursuz oldu: {e}")
-                raise
+            wait = 10 * (attempt + 1)
+            logger.warning(f"Webhook xətası: {e}. {wait}s sonra yenidən cəhd ({attempt+1}/10)")
+            await asyncio.sleep(wait)
+    logger.error("Webhook qurmaq uğursuz oldu.")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Startup and shutdown lifecycle."""
     logger.info("Starting up...")
 
     await get_supabase()
 
     application = get_application()
-    await _init_bot_with_retry(application)
+    await application.initialize()
+
+    # Webhook-u arka planda qur — startup-u bloklamasın
+    asyncio.create_task(_set_webhook_background())
 
     yield
 
@@ -59,7 +59,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Telegram AI Bot",
-        description="AI-powered Telegram bot with FastAPI + Supabase + Gemini",
         version="1.0.0",
         docs_url="/docs" if settings.debug else None,
         redoc_url=None,
