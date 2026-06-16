@@ -1,0 +1,24 @@
+# Web Framework
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+
+# Telegram Bot
+python-telegram-bot==21.3
+
+# Database - Supabase
+supabase==2.4.6
+postgrest==0.16.6
+
+# Gemini
+google-generativeai==0.7.2
+
+# Settings & Environment
+pydantic==2.7.1
+pydantic-settings==2.2.1
+python-dotenv==1.0.1
+
+# HTTP Client
+httpx==0.27.0
+
+# Utils
+python-multipart==0.0.9
