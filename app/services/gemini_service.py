@@ -120,3 +120,40 @@ Markdown işarələri istifadə etmə. Sadə mətn və emoji ilə yaz."""
     except Exception as e:
         logger.error(f"Gemini workout error: {e}")
         raise RuntimeError(f"AI xəta: {e}") from e
+
+
+async def edit_workout(program: str, instruction: str) -> str:
+    """İstifadəçinin sərbəst mətnlə verdiyi təlimata (məs: 'Deadlift-i squat ilə əvəz et')
+    uyğun olaraq mövcud məşq proqramını AI ilə dəyişir və tam yenilənmiş proqramı qaytarır."""
+    client = get_client()
+
+    prompt = f"""Aşağıda istifadəçinin mövcud məşq proqramı verilmişdir. İstifadəçinin tələbinə uyğun olaraq YALNIZ lazımi dəyişikliyi et, proqramın qalan hissəsini olduğu kimi saxla.
+
+MÖVCUD PROQRAM:
+{program}
+
+İSTİFADƏÇİNİN TƏLƏBİ:
+{instruction}
+
+Qaydalar:
+- Yalnız tələb olunan dəyişikliyi et, başqa heç nəyi dəyişmə.
+- Proqramın strukturunu (gün başlıqları, set/təkrar formatı, emoji üslubu) saxla.
+- Cavabında YALNIZ yenilənmiş tam proqramı ver — heç bir əlavə izahat, giriş və ya şərh yazma.
+- Markdown işarələri istifadə etmə. Sadə mətn və emoji ilə yaz."""
+
+    async def _call():
+        response = await client.aio.models.generate_content(
+            model=settings.gemini_model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                max_output_tokens=2000,
+                temperature=0.3,
+            ),
+        )
+        return response.text or program
+
+    try:
+        return await _with_retry(_call)
+    except Exception as e:
+        logger.error(f"Gemini edit_workout error: {e}")
+        raise RuntimeError(f"AI xəta: {e}") from e
