@@ -20,8 +20,13 @@ from app.bot.handlers import (
     level_callback,
     equipment_callback,
     muscles_callback,
+    confirm_callback,
+    edit_choice_callback,
+    manual_edit_input_handler,
+    ai_edit_input_handler,
     cancel_handler,
     CHOOSE_DAYS, CHOOSE_GOAL, CHOOSE_LEVEL, CHOOSE_EQUIPMENT, CHOOSE_MUSCLES,
+    CONFIRM_WORKOUT, EDIT_CHOICE, EDIT_MANUAL_INPUT, EDIT_AI_INPUT,
 )
 
 logger = get_logger(__name__)
@@ -48,6 +53,14 @@ def get_application() -> Application:
                 CHOOSE_LEVEL: [CallbackQueryHandler(level_callback, pattern="^level_")],
                 CHOOSE_EQUIPMENT: [CallbackQueryHandler(equipment_callback, pattern="^eq_")],
                 CHOOSE_MUSCLES: [CallbackQueryHandler(muscles_callback, pattern="^m_")],
+                CONFIRM_WORKOUT: [CallbackQueryHandler(confirm_callback, pattern="^confirm_")],
+                EDIT_CHOICE: [CallbackQueryHandler(edit_choice_callback, pattern="^edit_")],
+                EDIT_MANUAL_INPUT: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, manual_edit_input_handler)
+                ],
+                EDIT_AI_INPUT: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, ai_edit_input_handler)
+                ],
             },
             fallbacks=[CommandHandler("cancel", cancel_handler)],
         )
