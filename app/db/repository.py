@@ -1,6 +1,6 @@
 from typing import Optional
 from supabase import AsyncClient
-from app.db.models import UserCreate, User, MessageCreate, Message
+from app.db.models import UserCreate, User, MessageCreate, Message, WorkoutCreate, Workout
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -103,3 +103,82 @@ class MessageRepository:
             )
         except Exception as e:
             logger.error(f"Error clearing history: {e}")
+
+
+class WorkoutRepository:
+    def __init__(self, db: AsyncClient):
+        self.db = db
+
+    async def create(self, workout: WorkoutCreate) -> Optional[Workout]:
+        """Yeni workout-u (adətən status='draft' ilə) Supabase-də yaradır."""
+        try:
+            result = (
+                await self.db.table("workouts")
+                .insert(workout.model_dump())
+                .execute()
+            )
+            return Workout(**result.data[0]) if result.data else None
+        except Exception as e:
+            logger.error(f"Error creating workout: {e}")
+            return None
+
+    async def update_program(
+        self, workout_id: int, program: str, edit_type: str
+    ) -> Optional[Workout]:
+        """Mövcud workout-un mətnini yeniləyir (manual və ya AI redaktəsi)."""
+        try:
+            result = (
+                await self.db.table("workouts")
+                .update({"program": program, "last_edit_type": edit_type})
+                .eq("id", workout_id)
+                .execute()
+            )
+            return Workout(**result.data[0]) if result.data else None
+        except Exception as e:
+            logger.error(f"Error updating workout {workout_id}: {e}")
+            return None
+
+    async def accept(self, workout_id: int) -> Optional[Workout]:
+        """Workout-u 'accepted' statusuna keçirir — istifadəçi yekun versiyanı qəbul edib."""
+        try:
+            result = (
+                await self.db.table("workouts")
+                .update({"status": "accepted"})
+                .eq("id", workout_id)
+                .execute()
+            )
+            return Workout(**result.data[0]) if result.data else None
+        except Exception as e:
+            logger.error(f"Error accepting workout {workout_id}: {e}")
+            return None
+
+    async def get_by_id(self, workout_id: int) -> Optional[Workout]:
+        try:
+            result = (
+                await self.db.table("workouts")
+                .select("*")
+                .eq("id", workout_id)
+                .maybe_single()
+                .execute()
+            )
+            return Workout(**result.data) if result.data else None
+        except Exception as e:
+            logger.error(f"Error fetching workout {workout_id}: {e}")
+            return None
+
+    async def get_latest_accepted(self, telegram_id: int) -> Optional[Workout]:
+        try:
+            result = (
+                await self.db.table("workouts")
+                .select("*")
+                .eq("telegram_id", telegram_id)
+                .eq("status", "accepted")
+                .order("updated_at", desc=True)
+                .limit(1)
+                .maybe_single()
+                .execute()
+            )
+            return Workout(**result.data) if result.data else None
+        except Exception as e:
+            logger.error(f"Error fetching latest workout for {telegram_id}: {e}")
+            return None
