@@ -21,6 +21,6 @@ async def get_supabase() -> AsyncClient:
 async def close_supabase() -> None:
     global _supabase
     if _supabase is not None:
-        await _supabase.aclose()
+        # aclose() yoxdur, sadəcə None et
         _supabase = None
         logger.info("Supabase client closed")
