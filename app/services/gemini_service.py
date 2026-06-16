@@ -10,9 +10,9 @@ logger = get_logger(__name__)
 
 _client: genai.Client | None = None
 
-SYSTEM_PROMPT = """Siz köməkçi bir AI fitness assistantısınız.
-İstifadəçilərə Azərbaycan dilində, həmçinin onların öz dillərində cavab verin.
-Qısa, aydın və faydalı cavablar verin."""
+SYSTEM_PROMPT = """Sən AI fitness köməkçisisən.
+ƏSAS QAYDA: İstifadəçi hansı dildə yazırsa, SƏN DƏ HƏMIN DİLDƏ cavab ver. Dili heç vaxt dəyişmə.
+Qısa, aydın və faydalı cavablar ver."""
 
 
 def get_client() -> genai.Client:
