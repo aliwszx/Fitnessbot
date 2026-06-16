@@ -13,9 +13,8 @@ postgrest==0.16.6
 google-generativeai==0.7.2
 
 # Settings & Environment
-pydantic==2.7.1
-pydantic-core==2.18.2   # explicit pin — avoids source build on Python 3.14+
-pydantic-settings==2.2.1
+pydantic==2.12.0
+pydantic-settings==2.8.1
 python-dotenv==1.0.1
 
 # HTTP Client
