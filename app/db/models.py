@@ -36,3 +36,22 @@ class ConversationSession(BaseModel):
     session_id: str
     telegram_id: int
     messages: list[MessageCreate] = Field(default_factory=list)
+
+
+class WorkoutCreate(BaseModel):
+    user_id: int
+    telegram_id: int
+    program: str
+    days: Optional[str] = None
+    goal: Optional[str] = None
+    level: Optional[str] = None
+    equipment: Optional[str] = None
+    muscles: Optional[str] = None
+    status: str = "draft"  # "draft" | "accepted"
+
+
+class Workout(WorkoutCreate):
+    id: int
+    last_edit_type: Optional[str] = None  # "manual" | "ai"
+    created_at: datetime
+    updated_at: datetime
