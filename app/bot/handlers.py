@@ -233,10 +233,36 @@ def _edit_choice_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def _split_into_chunks(text: str, max_len: int = 3800) -> list[str]:
+    """Mətni Telegram mesaj limitinə uyğun hissələrə bölür — mümkün qədər sətir
+    sərhədlərini pozmadan, ki proqram bir mesaja tam yerləşməsə belə, ardınca
+    gələn mesaj(lar)la bütöv və oxunaqlı şəkildə çatdırılsın."""
+    if len(text) <= max_len:
+        return [text]
+
+    chunks: list[str] = []
+    current = ""
+    for line in text.split("\n"):
+        candidate = f"{current}\n{line}" if current else line
+        if len(candidate) > max_len:
+            if current:
+                chunks.append(current)
+                current = ""
+            if len(line) > max_len:
+                for i in range(0, len(line), max_len):
+                    chunks.append(line[i:i + max_len])
+            else:
+                current = line
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    return chunks or [text]
+
+
 async def _send_program(message: Message, program: str, keyboard: InlineKeyboardMarkup | None = None) -> None:
     """Proqramı (lazım gəldikdə) hissələrə bölüb göndərir, klaviaturanı yalnız son hissəyə əlavə edir."""
-    chunk_size = 3800
-    chunks = [program[i:i + chunk_size] for i in range(0, len(program), chunk_size)] or [program]
+    chunks = _split_into_chunks(program)
     for i, chunk in enumerate(chunks):
         is_last = i == len(chunks) - 1
         markup = keyboard if is_last else None
