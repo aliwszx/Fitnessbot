@@ -1,18 +1,28 @@
 import uuid
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.constants import ChatAction
 
 from app.core.logging import get_logger
 from app.db.client import get_supabase
-from app.db.repository import UserRepository, MessageRepository
-from app.db.models import UserCreate, MessageCreate
-from app.services.gemini_service import generate_response, generate_workout
+from app.db.repository import UserRepository, MessageRepository, WorkoutRepository
+from app.db.models import UserCreate, MessageCreate, WorkoutCreate
+from app.services.gemini_service import generate_response, generate_workout, edit_workout
 
 logger = get_logger(__name__)
 
 # ConversationHandler states
-CHOOSE_DAYS, CHOOSE_GOAL, CHOOSE_LEVEL, CHOOSE_EQUIPMENT, CHOOSE_MUSCLES = range(5)
+(
+    CHOOSE_DAYS,
+    CHOOSE_GOAL,
+    CHOOSE_LEVEL,
+    CHOOSE_EQUIPMENT,
+    CHOOSE_MUSCLES,
+    CONFIRM_WORKOUT,
+    EDIT_CHOICE,
+    EDIT_MANUAL_INPUT,
+    EDIT_AI_INPUT,
+) = range(9)
 
 
 async def _get_or_register_user(update: Update) -> None:
@@ -200,6 +210,42 @@ async def equipment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return CHOOSE_MUSCLES
 
 
+def _confirm_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ Qəbul et", callback_data="confirm_accept"),
+                InlineKeyboardButton("✏️ Redaktə et", callback_data="confirm_edit"),
+            ]
+        ]
+    )
+
+
+def _edit_choice_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✍️ Özüm yazım", callback_data="edit_manual"),
+                InlineKeyboardButton("🤖 AI ilə düzəlt", callback_data="edit_ai"),
+            ],
+            [InlineKeyboardButton("⬅️ Geri", callback_data="edit_back")],
+        ]
+    )
+
+
+async def _send_program(message: Message, program: str, keyboard: InlineKeyboardMarkup | None = None) -> None:
+    """Proqramı (lazım gəldikdə) hissələrə bölüb göndərir, klaviaturanı yalnız son hissəyə əlavə edir."""
+    chunk_size = 3800
+    chunks = [program[i:i + chunk_size] for i in range(0, len(program), chunk_size)] or [program]
+    for i, chunk in enumerate(chunks):
+        is_last = i == len(chunks) - 1
+        markup = keyboard if is_last else None
+        try:
+            await message.reply_text(chunk, parse_mode="MarkdownV2", reply_markup=markup)
+        except Exception:
+            await message.reply_text(chunk, reply_markup=markup)
+
+
 async def muscles_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
@@ -226,22 +272,151 @@ async def muscles_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             equipment=w["equipment"],
             muscles=w["muscles"],
         )
-        # Telegram 4096 simvol limiti var, uzun mətnləri hissələrə böl
-        chunk_size = 3800
-        for i in range(0, len(program), chunk_size):
-            chunk = program[i:i + chunk_size]
-            try:
-                await query.message.reply_text(chunk, parse_mode="MarkdownV2")
-            except Exception:
-                await query.message.reply_text(chunk)
     except Exception as e:
         logger.error(f"Workout generation error: {e}")
         await query.message.reply_text("⚠️ Xəta baş verdi. /workout ilə yenidən cəhd edin.")
+        context.user_data.pop("workout", None)
+        return ConversationHandler.END
 
-    return ConversationHandler.END
+    # Draft kimi Supabase-də saxla — istifadəçi qəbul edənə qədər status 'draft' olaraq qalır
+    user = update.effective_user
+    db = await get_supabase()
+    user_repo = UserRepository(db)
+    workout_repo = WorkoutRepository(db)
+    db_user = await user_repo.get_by_telegram_id(user.id) if user else None
+    user_db_id = db_user.id if db_user else 0
+
+    workout_row = await workout_repo.create(
+        WorkoutCreate(
+            user_id=user_db_id,
+            telegram_id=user.id if user else 0,
+            program=program,
+            days=w["days"],
+            goal=w["goal"],
+            level=w["level"],
+            equipment=w["equipment"],
+            muscles=w["muscles"],
+            status="draft",
+        )
+    )
+
+    context.user_data["workout"]["program"] = program
+    context.user_data["workout"]["workout_id"] = workout_row.id if workout_row else None
+
+    await _send_program(query.message, program, keyboard=_confirm_keyboard())
+    return CONFIRM_WORKOUT
+
+
+async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """'Qəbul et' / 'Redaktə et' düymələrini idarə edir."""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "confirm_accept":
+        workout_id = context.user_data.get("workout", {}).get("workout_id")
+        if workout_id:
+            db = await get_supabase()
+            workout_repo = WorkoutRepository(db)
+            await workout_repo.accept(workout_id)
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        await query.message.reply_text("✅ Məşq proqramı qəbul edildi və Supabase-də saxlanıldı!")
+        context.user_data.pop("workout", None)
+        return ConversationHandler.END
+
+    # confirm_edit
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await query.message.reply_text(
+        "Dəyişikliyi necə etmək istəyirsiniz?",
+        reply_markup=_edit_choice_keyboard(),
+    )
+    return EDIT_CHOICE
+
+
+async def edit_choice_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """'Özüm yazım' / 'AI ilə düzəlt' / 'Geri' düymələrini idarə edir."""
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    if query.data == "edit_back":
+        program = context.user_data.get("workout", {}).get("program", "")
+        await _send_program(query.message, program, keyboard=_confirm_keyboard())
+        return CONFIRM_WORKOUT
+
+    if query.data == "edit_manual":
+        await query.message.reply_text("✍️ Yeni proqram mətnini tam şəkildə bura yazıb göndərin:")
+        return EDIT_MANUAL_INPUT
+
+    # edit_ai
+    await query.message.reply_text(
+        "🤖 Hansı dəyişikliyi etmək istəyirsiniz?\n\n"
+        "Məsələn: \"Deadlift-i squat ilə əvəz et\" və ya \"Bazar ertəsi gününə daha bir məşq əlavə et\""
+    )
+    return EDIT_AI_INPUT
+
+
+async def manual_edit_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """İstifadəçinin özünün yazdığı yeni proqram mətnini qəbul edir."""
+    if not update.message or not update.message.text:
+        return EDIT_MANUAL_INPUT
+
+    new_program = update.message.text
+    context.user_data.setdefault("workout", {})["program"] = new_program
+
+    workout_id = context.user_data.get("workout", {}).get("workout_id")
+    if workout_id:
+        db = await get_supabase()
+        workout_repo = WorkoutRepository(db)
+        await workout_repo.update_program(workout_id, new_program, edit_type="manual")
+
+    await update.message.reply_text("✅ Dəyişiklik qeyd edildi. Yenilənmiş proqram:")
+    await _send_program(update.message, new_program, keyboard=_confirm_keyboard())
+    return CONFIRM_WORKOUT
+
+
+async def ai_edit_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """İstifadəçinin sərbəst mətnlə verdiyi dəyişiklik təlimatını AI-ya göndərir və proqramı yeniləyir."""
+    if not update.message or not update.message.text:
+        return EDIT_AI_INPUT
+
+    instruction = update.message.text
+    program = context.user_data.get("workout", {}).get("program", "")
+
+    await update.message.chat.send_action(ChatAction.TYPING)
+    try:
+        new_program = await edit_workout(program, instruction)
+    except Exception as e:
+        logger.error(f"AI edit_workout error: {e}")
+        await update.message.reply_text(
+            "⚠️ Dəyişiklik edilərkən xəta baş verdi. Zəhmət olmasa yenidən cəhd edin."
+        )
+        return EDIT_AI_INPUT
+
+    context.user_data.setdefault("workout", {})["program"] = new_program
+
+    workout_id = context.user_data.get("workout", {}).get("workout_id")
+    if workout_id:
+        db = await get_supabase()
+        workout_repo = WorkoutRepository(db)
+        await workout_repo.update_program(workout_id, new_program, edit_type="ai")
+
+    await update.message.reply_text("✅ AI dəyişikliyi tətbiq etdi. Yenilənmiş proqram:")
+    await _send_program(update.message, new_program, keyboard=_confirm_keyboard())
+    return CONFIRM_WORKOUT
 
 
 async def cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data.pop("workout", None)
     await update.message.reply_text("❌ Məşq proqramı ləğv edildi.")
     return ConversationHandler.END
 
